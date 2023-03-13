@@ -22,6 +22,8 @@ def get_opt():
     parser.add_argument('-b', '--batch-size', type=int, default=8)
     parser.add_argument('--fp16', action='store_true', help='use amp')
 
+    parser.add_argument('--cuda', default=True, help='cuda or cpu')
+
     parser.add_argument("--dataroot", default="./data/zalando-hd-resize")
     parser.add_argument("--datamode", default="test")
     parser.add_argument("--data_list", default="test_pairs.txt")
@@ -100,7 +102,7 @@ def test(opt, test_loader, board, tocg, D=None):
             input2 = torch.cat([parse_agnostic, densepose], 1)
 
             # forward
-            flow_list, fake_segmap, warped_cloth_paired, warped_clothmask_paired = tocg(input1, input2)
+            flow_list, fake_segmap, warped_cloth_paired, warped_clothmask_paired = tocg(opt, input1, input2)
             
             # warped cloth mask one hot 
             warped_cm_onehot = torch.FloatTensor((warped_clothmask_paired.detach().cpu().numpy() > 0.5).astype(np.float)).cuda()
@@ -180,9 +182,9 @@ def main():
     else:
         D = None
     # Load Checkpoint
-    load_checkpoint(tocg, opt.tocg_checkpoint)
+    load_checkpoint(tocg, opt.tocg_checkpoint, opt)
     if not opt.D_checkpoint == '' and os.path.exists(opt.D_checkpoint):
-        load_checkpoint(D, opt.D_checkpoint)
+        load_checkpoint(D, opt.D_checkpoint, opt)
     # Train
     test(opt, test_loader, board, tocg, D=D)
 
@@ -191,3 +193,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# python3 test_condition.py --gpu_ids '0,1,2,3' --batch-size 1 --tocg_checkpoint './eval_models/weights/v0.1/mtviton.pth'

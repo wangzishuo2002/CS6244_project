@@ -525,3 +525,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# python3 train_condition.py --cuda True --gpu_ids 0,1,2,3 --Ddownx2 --Ddropout --lasttvonly --interflowloss --occlusion --batch-size 1
