@@ -133,7 +133,7 @@ def test(opt, test_loader, board, tocg, D=None):
             fake_clothmask = (torch.argmax(fake_segmap.detach(), dim=1, keepdim=True) == 3).long()
             misalign = fake_clothmask - warped_cm_onehot
             misalign[misalign < 0.0] = 0.0
-        
+
         for i in range(c_paired.shape[0]):
             grid = make_grid([(c_paired[i].cpu() / 2 + 0.5), (cm_paired[i].cpu()).expand(3, -1, -1), visualize_segmap(parse_agnostic.cpu(), batch=i), ((densepose.cpu()[i]+1)/2),
                             (im_c[i].cpu() / 2 + 0.5), parse_cloth_mask[i].cpu().expand(3, -1, -1), (warped_cloth_paired[i].cpu().detach() / 2 + 0.5), (warped_cm_onehot[i].cpu().detach()).expand(3, -1, -1),
@@ -145,6 +145,7 @@ def test(opt, test_loader, board, tocg, D=None):
                               inputs['c_name']['unpaired'][i].split('.')[0] + '.png')))
         num += c_paired.shape[0]
         print(num)
+
     if D is not None:
         D_score.sort(key=lambda x: x[1], reverse=True)
         # Save D_score

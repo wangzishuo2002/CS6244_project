@@ -140,7 +140,7 @@ class CPDataset(data.Dataset):
         im = self.transform(im_pil)
 
         # load parsing image
-        parse_name = im_name.replace('image', 'image-parse-v3').replace('.jpg', '.png')
+        parse_name = im_name.replace('image', 'image-parse-v3-finetune').replace('.jpg', '.png')
         im_parse_pil_big = Image.open(osp.join(self.data_path, parse_name))
         im_parse_pil = transforms.Resize(self.fine_width, interpolation=0)(im_parse_pil_big)
         parse = torch.from_numpy(np.array(im_parse_pil)[None]).long()
@@ -162,7 +162,6 @@ class CPDataset(data.Dataset):
             11: ['socks',       [8]],
             12: ['noise',       [3, 11]]
         }
-        
         parse_map = torch.FloatTensor(20, self.fine_height, self.fine_width).zero_()
         parse_map = parse_map.scatter_(0, parse, 1.0)
         new_parse_map = torch.FloatTensor(self.semantic_nc, self.fine_height, self.fine_width).zero_()
@@ -177,7 +176,7 @@ class CPDataset(data.Dataset):
                 parse_onehot[0] += parse_map[label] * i
                 
         # load image-parse-agnostic
-        image_parse_agnostic = Image.open(osp.join(self.data_path, parse_name.replace('image-parse-v3', 'image-parse-agnostic-v3.2')))
+        image_parse_agnostic = Image.open(osp.join(self.data_path, parse_name.replace('image-parse-v3-finetune', 'image-parse-agnostic-v3.2')))
         image_parse_agnostic = transforms.Resize(self.fine_width, interpolation=0)(image_parse_agnostic)
         parse_agnostic = torch.from_numpy(np.array(image_parse_agnostic)[None]).long()
         image_parse_agnostic = self.transform(image_parse_agnostic.convert('RGB'))
