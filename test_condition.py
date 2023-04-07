@@ -195,4 +195,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-# python3 test_condition.py --gpu_ids '0,1,2,3' --batch-size 1 --tocg_checkpoint './eval_models/weights/v0.1/mtviton.pth'
+# python3 test_condition.py --gpu_ids '3' --batch-size 4 --tocg_checkpoint './eval_models/weights/v0.1/mtviton.pth'

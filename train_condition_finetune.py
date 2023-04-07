@@ -60,12 +60,13 @@ def get_opt():
     parser.add_argument('--tensorboard_dir', type=str, default='tensorboard', help='save tensorboard infos')
     parser.add_argument('--checkpoint_dir', type=str, default='checkpoints', help='save checkpoint infos')
     parser.add_argument('--tocg_checkpoint', type=str, default='', help='tocg checkpoint')
+    parser.add_argument('--D_checkpoint', type=str, default='', help='D checkpoint')
 
     parser.add_argument("--tensorboard_count", type=int, default=100)
     parser.add_argument("--display_count", type=int, default=100)
-    parser.add_argument("--save_count", type=int, default=10000)
+    parser.add_argument("--save_count", type=int, default=1000)
     parser.add_argument("--load_step", type=int, default=0)
-    parser.add_argument("--keep_step", type=int, default=300000)
+    parser.add_argument("--keep_step", type=int, default=30000)
     parser.add_argument("--shuffle", action='store_true', help='shuffle input data')
     parser.add_argument("--semantic_nc", type=int, default=13)
     parser.add_argument("--output_nc", type=int, default=13)
@@ -513,6 +514,7 @@ def main():
     # Load Checkpoint
     if not opt.tocg_checkpoint == '' and os.path.exists(opt.tocg_checkpoint):
         load_checkpoint(tocg, opt.tocg_checkpoint, opt)
+        load_checkpoint(D, opt.D_checkpoint, opt)
 
     # Train
     train(opt, train_loader, val_loader, test_loader, board, tocg, D)
@@ -526,4 +528,5 @@ def main():
 if __name__ == "__main__":
     main()
 
+# --D_checkpoint './eval_models/weights/v0.1/discriminator_mtviton.pth'
 # python3 train_condition_finetune.py --cuda True --gpu_ids 1 --Ddownx2 --Ddropout --lasttvonly --interflowloss --occlusion --tocg_checkpoint './eval_models/weights/v0.1/mtviton.pth' --batch-size 8
