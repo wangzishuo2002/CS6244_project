@@ -30,7 +30,7 @@ def get_opt():
 
     parser.add_argument("--gpu_ids", default="")
     parser.add_argument('-j', '--workers', type=int, default=4)
-    parser.add_argument('-b', '--batch-size', type=int, default=1)
+    parser.add_argument('-b', '--batch-size', type=int, default=2)
     parser.add_argument('--fp16', action='store_true', help='use amp')
     # Cuda availability
     parser.add_argument('--cuda', default=False, help='cuda or cpu')
@@ -39,7 +39,7 @@ def get_opt():
     parser.add_argument("--dataroot", default="./data/zalando-hd-resize")
     parser.add_argument("--datamode", default="test")
     parser.add_argument("--data_list", default="test_pairs.txt")
-    parser.add_argument("--output_dir", type=str, default="./Output")
+    parser.add_argument("--output_dir", type=str, default=None)
     parser.add_argument("--datasetting", default="unpaired")
     parser.add_argument("--fine_width", type=int, default=768)
     parser.add_argument("--fine_height", type=int, default=1024)
@@ -295,3 +295,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# python3 test_generator.py --gpu_ids 3 --occlusion --cuda True --test_name finetune --tocg_checkpoint './checkpoints/finetune/tocg_step_030000.pth'
