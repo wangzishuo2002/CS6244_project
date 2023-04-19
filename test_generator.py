@@ -244,7 +244,7 @@ def test(opt, test_loader, tocg, generator):
                                        nrow=4)
                 unpaired_name = (inputs['c_name']['paired'][i].split('.')[0] + '_' +
                                  inputs['c_name'][opt.datasetting][i].split('.')[0] + '.png')
-                save_image(grid, os.path.join(grid_dir, unpaired_name))
+                # save_image(grid, os.path.join(grid_dir, unpaired_name))
                 unpaired_names.append(unpaired_name)
 
             # save output

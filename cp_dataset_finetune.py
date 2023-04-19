@@ -157,7 +157,7 @@ class CPDataset(data.Dataset):
             2:  ['face',        [4, 13]],
             3:  ['upper',       [5, 6, 7]],
             4:  ['bottom',      [9, 12]],
-            5:  ['left_arm',    [14]],
+            5:  ['left_arm ',    [14]],
             6:  ['right_arm',   [15]],
             7:  ['left_leg',    [16]],
             8:  ['right_leg',   [17]],
@@ -173,6 +173,17 @@ class CPDataset(data.Dataset):
         for i in range(len(labels)):
             for label in labels[i][1]:
                 new_parse_map[i] += parse_map[label]
+
+
+        labels_hands_only = {
+            0: ['left_arm ', [14]],
+            1: ['right_arm', [15]]
+        }
+
+        new_parse_map_hand = torch.FloatTensor(self.semantic_nc, self.fine_height, self.fine_width).zero_()
+        for i in range(len(labels_hands_only)):
+            for label in labels_hands_only[i][1]:
+                new_parse_map_hand[i] += parse_map[label]
                 
         parse_onehot = torch.FloatTensor(1, self.fine_height, self.fine_width).zero_()
         for i in range(len(labels)):
@@ -238,6 +249,7 @@ class CPDataset(data.Dataset):
             # GT
             'parse_onehot' : parse_onehot,  # Cross Entropy
             'parse': new_parse_map, # GAN Loss real
+            'parse_hand': new_parse_map_hand, # Hand GAN loss real
             'pcm': pcm,             # L1 Loss & vis
             'parse_cloth': im_c,    # VGG Loss & vis
             # visualization & GT

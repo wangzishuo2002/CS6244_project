@@ -12,13 +12,15 @@ import torchvision.transforms as Transforms
 from torchvision.models.inception import inception_v3
 
 import eval_models as models
+from piq import multi_scale_ssim, mdsi  # full reference  (Mean Deviation Similarity Index)
+from piq import brisque # no reference
 
 
 def get_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('--evaluation', default='LPIPS')
-    parser.add_argument('--predict_dir', default='./result/bg_ver1/output/')
-    parser.add_argument('--ground_truth_dir', default='./data/zalando-hd-resize/test/image')
+    parser.add_argument('--predict_dir', default='./output/finetune/test/unpaired/generator/output')  #./result/bg_ver1/output/
+    parser.add_argument('--ground_truth_dir', default='./data/zalando-hd-resize/test/image')  #./data/zalando-hd-resize/test/image
     parser.add_argument('--resolution', type=int, default=1024)
     
 
@@ -44,6 +46,7 @@ def Evaluation(opt, pred_list, gt_list):
     inception_model.eval()
 
     avg_ssim, avg_mse, avg_distance = 0.0, 0.0, 0.0
+    avg_mdsi, avg_mssim, avg_brisque = 0.0, 0.0, 0.0
     preds = np.zeros((len(gt_list), 1000))
     lpips_list = []
     with torch.no_grad():
@@ -66,6 +69,13 @@ def Evaluation(opt, pred_list, gt_list):
             pred_np = np.asarray(pred_img.convert('L'))
             avg_ssim += ssim(gt_np, pred_np, data_range=255, gaussian_weights=True, use_sample_covariance=False)
 
+            new_pred_np = np.expand_dims(pred_np, axis=(0,1))
+            new_gt_np = np.expand_dims(gt_np, axis=(0,1))
+            avg_mssim += multi_scale_ssim(torch.from_numpy(new_pred_np), torch.from_numpy(new_gt_np), data_range=255)
+            avg_mdsi += mdsi(torch.from_numpy(new_pred_np), torch.from_numpy(new_gt_np), data_range=255)
+            avg_brisque += brisque(torch.from_numpy(new_pred_np / 255.0))
+
+
             # Calculate LPIPS
             gt_img_LPIPS = T2(gt_img).unsqueeze(0).cuda()
             pred_img_LPIPS = T2(pred_img).unsqueeze(0).cuda()
@@ -84,6 +94,10 @@ def Evaluation(opt, pred_list, gt_list):
         avg_ssim /= len(gt_list)
         avg_mse = avg_mse / len(gt_list)
         avg_distance = avg_distance / len(gt_list)
+
+        avg_mdsi /= len(gt_list)
+        avg_mssim /= len(gt_list)
+        avg_brisque /= len(gt_list)
 
         # Calculate Inception Score
         split_scores = [] # Now compute the mean kl-divergence
@@ -109,7 +123,7 @@ def Evaluation(opt, pred_list, gt_list):
     f.write(f"IS_mean : {IS_mean} / IS_std : {IS_std}\n")
     
     f.close()
-    return avg_ssim, avg_mse, avg_distance, IS_mean, IS_std
+    return avg_ssim, avg_mse, avg_distance, IS_mean, IS_std, avg_mdsi, avg_mssim, avg_brisque
 
 
 
@@ -122,9 +136,11 @@ def main():
     pred_list.sort()
     gt_list.sort()
 
-    avg_ssim, avg_mse, avg_distance, IS_mean, IS_std = Evaluation(opt, pred_list, gt_list)
+    avg_ssim, avg_mse, avg_distance, IS_mean, IS_std, avg_mdsi, avg_mssim, avg_brisque = Evaluation(opt, pred_list, gt_list)
     print("SSIM : %f / MSE : %f / LPIPS : %f" % (avg_ssim, avg_mse, avg_distance))
     print("IS_mean : %f / IS_std : %f" % (IS_mean, IS_std))
+    print("Full reference, Multi-Scale SSIM : %f / MDSI : %f" % (avg_mssim, avg_mdsi))
+    print("No reference, BRISQUE : %f" % avg_brisque)
 
 
 if __name__ == '__main__':

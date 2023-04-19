@@ -13,6 +13,7 @@ from tqdm import tqdm
 from tensorboardX import SummaryWriter
 from utils import *
 from torch.utils.data import Subset
+import copy
 
 
 def iou_metric(y_pred_batch, y_true_batch):
@@ -102,6 +103,7 @@ def get_opt():
     parser.add_argument('--D_lr', type=float, default=0.0002, help='Discriminator initial learning rate for adam')
     parser.add_argument('--CElamda', type=float, default=10, help='initial learning rate for adam')
     parser.add_argument('--GANlambda', type=float, default=1)
+    parser.add_argument('--GAN_handlambda', type=float, default=2)
     parser.add_argument('--tvlambda', type=float, default=2)
     parser.add_argument('--upsample', type=str, default='bilinear', choices=['nearest', 'bilinear'])
     parser.add_argument('--val_count', type=int, default='1000')
@@ -112,24 +114,29 @@ def get_opt():
     return opt
 
 
-def train(opt, train_loader, test_loader, val_loader, board, tocg, D):
+def train(opt, train_loader, test_loader, val_loader, board, tocg, D, D_hand):
     # Model
     tocg.cuda()
     tocg.train()
     D.cuda()
     D.train()
+    D_hand.cuda()
+    D_hand.train()
 
     # criterion
     criterionL1 = nn.L1Loss()
     criterionVGG = VGGLoss(opt)
     if opt.fp16:
         criterionGAN = GANLoss(use_lsgan=True, tensor=torch.cuda.HalfTensor)
+        criterionGAN_hand = GANLoss(use_lsgan=True, tensor=torch.cuda.HalfTensor)
     else:
         criterionGAN = GANLoss(use_lsgan=True, tensor=torch.cuda.FloatTensor if opt.gpu_ids else torch.Tensor)
+        criterionGAN_hand = GANLoss(use_lsgan=True, tensor=torch.cuda.FloatTensor if opt.gpu_ids else torch.Tensor)
 
     # optimizer
     optimizer_G = torch.optim.Adam(tocg.parameters(), lr=opt.G_lr, betas=(0.5, 0.999))
     optimizer_D = torch.optim.Adam(D.parameters(), lr=opt.D_lr, betas=(0.5, 0.999))
+    optimizer_D_hand = torch.optim.Adam(D_hand.parameters(), lr=opt.D_lr, betas=(0.5, 0.999))
 
     for step in tqdm(range(opt.load_step, opt.keep_step)):
         iter_start_time = time.time()
@@ -146,6 +153,7 @@ def train(opt, train_loader, test_loader, val_loader, board, tocg, D):
         # GT
         label_onehot = inputs['parse_onehot'].cuda()  # CE
         label = inputs['parse'].cuda()  # GAN loss
+        label_hand = inputs['parse_hand'].cuda()
         parse_cloth_mask = inputs['pcm'].cuda()  # L1
         im_c = inputs['parse_cloth'].cuda()  # VGG
         # visualization
@@ -157,6 +165,15 @@ def train(opt, train_loader, test_loader, val_loader, board, tocg, D):
 
         # forward
         flow_list, fake_segmap, warped_cloth_paired, warped_clothmask_paired = tocg(opt, input1, input2)
+
+
+        fake_segmap_hand = fake_segmap.detach()
+        _, num_labels, _, _ = fake_segmap.shape
+        for x in range(num_labels):
+            if x == 5 or 6:
+                pass
+            else:
+                fake_segmap_hand[:, x, :, :] *= 0
 
         # warped cloth mask one hot 
 
@@ -273,10 +290,13 @@ def train(opt, train_loader, test_loader, val_loader, board, tocg, D):
 
         else:
             fake_segmap_softmax = torch.softmax(fake_segmap, 1)
+            fake_segmap_hand_softmax = torch.softmax(fake_segmap_hand, 1)
 
             pred_segmap = D(torch.cat((input1.detach(), input2.detach(), fake_segmap_softmax), dim=1))
+            pred_segmap_hand = D_hand(torch.cat((input1.detach(), input2.detach(), fake_segmap_hand_softmax), dim=1))
 
             loss_G_GAN = criterionGAN(pred_segmap, True)
+            loss_G_GAN_hand = criterionGAN_hand(pred_segmap_hand, True)
 
             if not opt.G_D_seperate:
                 # discriminator
@@ -285,10 +305,19 @@ def train(opt, train_loader, test_loader, val_loader, board, tocg, D):
                 loss_D_fake = criterionGAN(fake_segmap_pred, False)
                 loss_D_real = criterionGAN(real_segmap_pred, True)
 
+                fake_segmap_pred_hand = D_hand(torch.cat((input1.detach(), input2.detach(), fake_segmap_hand_softmax.detach()), dim=1))
+                real_segmap_pred_hand = D_hand(torch.cat((input1.detach(), input2.detach(), label_hand), dim=1))
+                loss_D_fake_hand = criterionGAN_hand(fake_segmap_pred_hand, False)
+                loss_D_real_hand = criterionGAN_hand(real_segmap_pred_hand, True)
+
                 # loss sum
                 loss_G = (10 * loss_l1_cloth + loss_vgg + opt.tvlambda * loss_tv) + (
-                            CE_loss * opt.CElamda + loss_G_GAN * opt.GANlambda)  # warping + seg_generation
+                            CE_loss * opt.CElamda + loss_G_GAN * opt.GANlambda +
+                            loss_G_GAN_hand * opt.GAN_handlambda)  # warping + seg_generation
+
                 loss_D = loss_D_fake + loss_D_real
+
+                loss_D_hand = loss_D_fake_hand + loss_D_real_hand
 
                 # step
                 optimizer_G.zero_grad()
@@ -298,6 +327,10 @@ def train(opt, train_loader, test_loader, val_loader, board, tocg, D):
                 optimizer_D.zero_grad()
                 loss_D.backward()
                 optimizer_D.step()
+
+                optimizer_D_hand.zero_grad()
+                loss_D_hand.backward()
+                optimizer_D_hand.step()
 
             else:  # train G first after that train D
                 # loss G sum
@@ -465,16 +498,19 @@ def train(opt, train_loader, test_loader, val_loader, board, tocg, D):
             t = time.time() - iter_start_time
             if not opt.no_GAN_loss:
                 print(
-                    "step: %8d, time: %.3f\nloss G: %.4f, L1_cloth loss: %.4f, VGG loss: %.4f, TV loss: %.4f CE: %.4f, G GAN: %.4f\nloss D: %.4f, D real: %.4f, D fake: %.4f"
+                    "step: %8d, time: %.3f\nloss G: %.4f, L1_cloth loss: %.4f, VGG loss: %.4f, TV loss: %.4f CE: %.4f, G GAN: %.4f \n"
+                    "loss D: %.4f, D real: %.4f, D fake: %.4f \n"
+                    "loss D_hand: %.4f, D real_hand: %.4f, D fake_hand: %.4f"
                     % (
                     step + 1, t, loss_G.item(), loss_l1_cloth.item(), loss_vgg.item(), loss_tv.item(), CE_loss.item(),
-                    loss_G_GAN.item(), loss_D.item(), loss_D_real.item(), loss_D_fake.item()), flush=True)
+                    loss_G_GAN.item(), loss_D.item(), loss_D_real.item(), loss_D_fake.item(),
+                    loss_D_hand.item(), loss_D_real_hand.item(), loss_D_fake_hand.item()), flush=True)
 
         # save
         if (step + 1) % opt.save_count == 0:
             save_checkpoint(tocg, os.path.join(opt.checkpoint_dir, opt.name, 'tocg_step_%06d.pth' % (step + 1)), opt)
             save_checkpoint(D, os.path.join(opt.checkpoint_dir, opt.name, 'D_step_%06d.pth' % (step + 1)), opt)
-
+            save_checkpoint(D_hand, os.path.join(opt.checkpoint_dir, opt.name, 'D_hand_step_%06d.pth' % (step + 1)), opt)
 
 def main():
     opt = get_opt()
@@ -510,6 +546,8 @@ def main():
                               norm_layer=nn.BatchNorm2d)
     D = define_D(input_nc=input1_nc + input2_nc + opt.output_nc, Ddownx2=opt.Ddownx2, Ddropout=opt.Ddropout,
                  n_layers_D=3, spectral=opt.spectral, num_D=opt.num_D)
+    D_hand = define_D(input_nc=input1_nc + input2_nc + opt.output_nc, Ddownx2=opt.Ddownx2, Ddropout=opt.Ddropout,
+                 n_layers_D=3, spectral=opt.spectral, num_D=opt.num_D)
 
     # Load Checkpoint
     if not opt.tocg_checkpoint == '' and os.path.exists(opt.tocg_checkpoint):
@@ -517,11 +555,12 @@ def main():
         load_checkpoint(D, opt.D_checkpoint, opt)
 
     # Train
-    train(opt, train_loader, val_loader, test_loader, board, tocg, D)
+    train(opt, train_loader, val_loader, test_loader, board, tocg, D, D_hand)
 
     # Save Checkpoint
     save_checkpoint(tocg, os.path.join(opt.checkpoint_dir, opt.name, 'tocg_final.pth'), opt)
     save_checkpoint(D, os.path.join(opt.checkpoint_dir, opt.name, 'D_final.pth'), opt)
+    save_checkpoint(D_hand, os.path.join(opt.checkpoint_dir, opt.name, 'D_hand_final.pth'), opt)
     print("Finished training %s!" % opt.name)
 
 
