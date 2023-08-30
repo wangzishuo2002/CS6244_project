@@ -3,7 +3,7 @@
 # Our environment setup is similar to [HR-VITON](https://github.com/sangyun884/HR-VITON)
 
 ## Dataset & Weights
-You can find our finetune dataset and pretrained weights in google drive
+You can find our finetune dataset and pretrained weights in [google drive]([https://github.com/sangyun884/HR-VITON](https://drive.google.com/drive/folders/1MOrBbNxtHis6jP6cXXs2MPRkIZrdCA7l))
 
 ## Inference
 ```python
